@@ -1,56 +1,85 @@
+#include <IRremote.h>
 #include <Servo.h>
 
 #define DEBUG
 
+#define MAX_DISTANCE 30
+
 #define TARGET_SPEED 200
-#define FREQ_TIME 100
-#define Kp 0.75
+#define FREQ_TIME 1000
+#define Kp 0.4
 #define Ki 0
 #define Kd 0
 #define TURN_LEFT_DELAY 200
 #define BACKWARD_DELAY 300
 
+#define FORWARD 0xEC27D43D 
+#define BACKWARD 0x86BD99C
+#define LEFT 0x1A422E43
+#define RIGHT 0xA23BD824
+#define STOP 0x7295A904
+
+// ultrasonic sensor
 const int echoPin = 0;
 const int trigPin = 1;
 unsigned long distance = 0;
 
+// mode button
 const int modePin = 4;
 
-// right motor
-const int enA = 11;
-const int inA = 12;
-const int inB = 13;
+// IR
+const int IRPin = 9;
+IRrecv irrecv(IRPin);
+unsigned int command = 0;
+
+// Servo
+const int servoPin = 10;
+Servo robotServo;
+
 // left motor
-const int enB = 6;
-const int inC = 7;
-const int inD = 8;
+const int enA = 6;
+const int inA = 7;
+const int inB = 8;
+// right motor
+const int enB = 11;
+const int inC = 12;
+const int inD = 13;
 int actualLeftMotorSpeed = 0;
 int actualRightMotorSpeed = 0;
 int errorSum = 0;
 int lastError = 0;
 int adjustPWM = 0;
-
-const int maxDistance = 30;
-
 volatile long countLeft = 0;
 volatile long countRight = 0;
 unsigned long lastTime = 0;
 unsigned int pulsesPerTurn = 20;
 
-Servo robotServo;
 
 void setup() {
-#ifdef DEBUG
   Serial.begin(38400);
-#endif
+  
+  // ir receiver
+  irrecv.enableIRIn();
   
   // SRF05 pin configuration
   pinMode(echoPin, INPUT);
   pinMode(trigPin, OUTPUT);
   
+  // internal pull-up interrupt pins
+  pinMode(2, INPUT);
+  pinMode(3, INPUT);
+  digitalWrite(2, HIGH);
+  digitalWrite(3, HIGH);
+  attachInterrupt(0, readEncoderLeft, FALLING);
+  attachInterrupt(1, readEncoderRight, FALLING);
+  
   // mode pin configuration
   pinMode(modePin, INPUT);
   digitalWrite(modePin, HIGH);
+  
+  // servo pin configuration
+  robotServo.attach(servoPin);
+  robotServo.write(90);
   
   // motors pins configuration
   pinMode(enA, OUTPUT);
@@ -59,32 +88,17 @@ void setup() {
   pinMode(enB, OUTPUT);
   pinMode(inC, OUTPUT);
   pinMode(inD, OUTPUT);
-  
-  // internal pull-up interrupt pins
-  pinMode(2, INPUT);
-  pinMode(3, INPUT);
-  //digitalWrite(2, HIGH);
-  //digitalWrite(3, HIGH);
-  attachInterrupt(0, readEncoderLeft, FALLING);
-  attachInterrupt(1, readEncoderRight, FALLING);
-  
-  // disable motor run
+  //
+  digitalWrite(inA, LOW);
+  digitalWrite(inB, HIGH);
   analogWrite(enA, 0);
+  digitalWrite(inC, LOW);
+  digitalWrite(inD, HIGH);
   analogWrite(enB, 0);
-  
-  // servo pin configuration
-  robotServo.attach(10);
-  robotServo.write(90);
 }
 
 void loop() {
-  // make sure robot is going straight forward
-  if (millis() - lastTime > FREQ_TIME) {
-    getMotorsSpeed();
-    adjustPWM = calculatePID(TARGET_SPEED, actualLeftMotorSpeed, actualRightMotorSpeed);
-    Serial.println(adjustPWM);
-    lastTime = millis();
-  }
+  //checkPID();
   
   if (digitalRead(modePin) == HIGH) {
     #ifdef DEBUG
@@ -93,7 +107,7 @@ void loop() {
     // auto run mode
     calculateDistance();
     
-    if ((int)distance <= maxDistance) {
+    if ((int)distance <= MAX_DISTANCE) {
       #ifdef DEBUG
       Serial.println("Near obstacle!!!");
       #endif
@@ -101,7 +115,7 @@ void loop() {
       delay(500);
       goBackward();
       delay(BACKWARD_DELAY);
-      turn90Left();
+      turnLeft();
       delay(TURN_LEFT_DELAY);
     } else {
       #ifdef DEBUG
@@ -114,14 +128,45 @@ void loop() {
     #ifdef DEBUG
     //Serial.println("Manual run mode");
     #endif
-    goStraight();
+    IRDecoder();   
   }
+}
+
+void IRDecoder() {
+  decode_results results;
+  
+  if (irrecv.decode(&results)) {
+    #ifdef DEBUG
+    Serial.println(results.value, HEX);
+    #endif
+    if (results.value != 0xFFFFFFFF) {
+      switch(results.value) {
+        case FORWARD:
+          goStraight();
+          break;
+        case BACKWARD:
+          goBackward();
+          break;
+        case LEFT:
+          turnLeft();
+          break;
+        case RIGHT:
+          turnRight();
+          break;
+        default:
+          stopMotors();
+          break;
+      }  
+    }
+  }
+  irrecv.resume();
+  delay(100);
 }
 
 void getMotorsSpeed() {
   // detached interrupt during reading
-  detachInterrupt(0);
-  detachInterrupt(1);
+  //detachInterrupt(0);
+  //detachInterrupt(1);
   
   static long lastCountLeft;
   static long lastCountRight;
@@ -141,8 +186,18 @@ void getMotorsSpeed() {
   lastCountRight = countRight;
   
   // reattach interrupt
-  attachInterrupt(0, readEncoderLeft, FALLING);
-  attachInterrupt(1, readEncoderRight, FALLING);
+  //attachInterrupt(0, readEncoderLeft, FALLING);
+  //attachInterrupt(1, readEncoderRight, FALLING);
+}
+
+void checkPID() {
+  // make sure robot is going straight forward
+  if (millis() - lastTime > FREQ_TIME) {
+    getMotorsSpeed();
+    adjustPWM = calculatePID(TARGET_SPEED, actualLeftMotorSpeed, actualRightMotorSpeed);
+    Serial.println(adjustPWM);
+    lastTime = millis();
+  } 
 }
 
 int calculatePID(int pwm, int targetSpeed, int currentSpeed) {
@@ -152,46 +207,63 @@ int calculatePID(int pwm, int targetSpeed, int currentSpeed) {
   static int lastError = 0;
  
   error = targetSpeed - currentSpeed;
-  Serial.println(error);
+  //Serial.println(error);
   errorSum += error;
   diffError = error - lastError;
   PID = Kp * error + Ki * errorSum + Kd * diffError;
-  Serial.println(PID);
+  //Serial.println(PID);
   
   lastError = error;
   
-  return constrain(pwm + PID, 0, 255);
+  return (int)PID;
+}
+
+void stopMotors() {
+  digitalWrite(inA, LOW);
+  digitalWrite(inB, LOW);
+  analogWrite(enA, 0);
+  digitalWrite(inC, LOW);
+  digitalWrite(inD, LOW);
+  analogWrite(enB, 0);
 }
 
 void goStraight() {
+  //checkPID();
   digitalWrite(inA, LOW);
   digitalWrite(inB, HIGH);
-  analogWrite(enA, adjustPWM);
+  //analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
+  analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, LOW);
   digitalWrite(inD, HIGH);
   analogWrite(enB, TARGET_SPEED);
 }
 
-void stopMotors() {
-  analogWrite(enA, 0);
-  analogWrite(enB, 0);
-}
-
 void goBackward() {
+  //checkPID();
   digitalWrite(inA, HIGH);
   digitalWrite(inB, LOW);
-  analogWrite(enA, adjustPWM);
+  //analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
+  analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, HIGH);
   digitalWrite(inD, LOW);
   analogWrite(enB, TARGET_SPEED);
 }
 
-void turn90Left() {
+void turnLeft() {
   digitalWrite(inA, HIGH);
   digitalWrite(inB, LOW);
   analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, LOW);
   digitalWrite(inD, HIGH);
+  analogWrite(enB, TARGET_SPEED);
+}
+
+void turnRight() {
+  digitalWrite(inA, LOW);
+  digitalWrite(inB, HIGH);
+  analogWrite(enA, TARGET_SPEED);
+  digitalWrite(inC, HIGH);
+  digitalWrite(inD, LOW);
   analogWrite(enB, TARGET_SPEED);
 }
 

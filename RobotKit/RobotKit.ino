@@ -3,11 +3,11 @@
 
 #define DEBUG
 
-#define MAX_DISTANCE 30
+#define MAX_DISTANCE 15
 
 #define TARGET_SPEED 200
-#define FREQ_TIME 1000
-#define Kp 0.4
+#define FREQ_TIME 200
+#define Kp 0.7
 #define Ki 0
 #define Kd 0
 #define TURN_LEFT_DELAY 200
@@ -30,6 +30,7 @@ const int modePin = 4;
 // IR
 const int IRPin = 9;
 IRrecv irrecv(IRPin);
+decode_results results;
 unsigned int command = 0;
 
 // Servo
@@ -37,11 +38,11 @@ const int servoPin = 10;
 Servo robotServo;
 
 // left motor
-const int enA = 6;
+const int enA = 5;
 const int inA = 7;
 const int inB = 8;
 // right motor
-const int enB = 11;
+const int enB = 6;
 const int inC = 12;
 const int inD = 13;
 int actualLeftMotorSpeed = 0;
@@ -98,7 +99,7 @@ void setup() {
 }
 
 void loop() {
-  //checkPID();
+  checkPID();
   
   if (digitalRead(modePin) == HIGH) {
     #ifdef DEBUG
@@ -128,13 +129,11 @@ void loop() {
     #ifdef DEBUG
     //Serial.println("Manual run mode");
     #endif
-    IRDecoder();   
+    IRDecoder(); 
   }
 }
 
 void IRDecoder() {
-  decode_results results;
-  
   if (irrecv.decode(&results)) {
     #ifdef DEBUG
     Serial.println(results.value, HEX);
@@ -165,8 +164,8 @@ void IRDecoder() {
 
 void getMotorsSpeed() {
   // detached interrupt during reading
-  //detachInterrupt(0);
-  //detachInterrupt(1);
+  detachInterrupt(0);
+  detachInterrupt(1);
   
   static long lastCountLeft;
   static long lastCountRight;
@@ -186,8 +185,8 @@ void getMotorsSpeed() {
   lastCountRight = countRight;
   
   // reattach interrupt
-  //attachInterrupt(0, readEncoderLeft, FALLING);
-  //attachInterrupt(1, readEncoderRight, FALLING);
+  attachInterrupt(0, readEncoderLeft, FALLING);
+  attachInterrupt(1, readEncoderRight, FALLING);
 }
 
 void checkPID() {
@@ -228,42 +227,39 @@ void stopMotors() {
 }
 
 void goStraight() {
-  //checkPID();
   digitalWrite(inA, LOW);
   digitalWrite(inB, HIGH);
-  //analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
-  analogWrite(enA, TARGET_SPEED);
+  analogWrite(enB, TARGET_SPEED);
+  //analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, LOW);
   digitalWrite(inD, HIGH);
-  analogWrite(enB, TARGET_SPEED);
+  analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
 }
 
 void goBackward() {
-  //checkPID();
   digitalWrite(inA, HIGH);
   digitalWrite(inB, LOW);
-  //analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
   analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, HIGH);
   digitalWrite(inD, LOW);
-  analogWrite(enB, TARGET_SPEED);
+  analogWrite(enB, constrain (TARGET_SPEED + adjustPWM, 0, 255));
 }
 
 void turnLeft() {
-  digitalWrite(inA, HIGH);
-  digitalWrite(inB, LOW);
+  digitalWrite(inA, LOW);
+  digitalWrite(inB, HIGH);
   analogWrite(enA, TARGET_SPEED);
-  digitalWrite(inC, LOW);
-  digitalWrite(inD, HIGH);
+  digitalWrite(inC, HIGH);
+  digitalWrite(inD, LOW);
   analogWrite(enB, TARGET_SPEED);
 }
 
 void turnRight() {
-  digitalWrite(inA, LOW);
-  digitalWrite(inB, HIGH);
+  digitalWrite(inA, HIGH);
+  digitalWrite(inB, LOW);
   analogWrite(enA, TARGET_SPEED);
-  digitalWrite(inC, HIGH);
-  digitalWrite(inD, LOW);
+  digitalWrite(inC, LOW);
+  digitalWrite(inD, HIGH);
   analogWrite(enB, TARGET_SPEED);
 }
 

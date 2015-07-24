@@ -15,8 +15,8 @@
 
 #define FORWARD 0xEC27D43D 
 #define BACKWARD 0x86BD99C
-#define LEFT 0x1A422E43
-#define RIGHT 0xA23BD824
+#define LEFT 0xA23BD824
+#define RIGHT 0x1A422E43
 #define STOP 0x7295A904
 
 // ultrasonic sensor
@@ -131,6 +131,7 @@ void loop() {
     #endif
     IRDecoder(); 
   }
+  delay(100);
 }
 
 void IRDecoder() {
@@ -229,11 +230,11 @@ void stopMotors() {
 void goStraight() {
   digitalWrite(inA, LOW);
   digitalWrite(inB, HIGH);
-  analogWrite(enB, TARGET_SPEED);
+  analogWrite(enA, TARGET_SPEED);
   //analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, LOW);
   digitalWrite(inD, HIGH);
-  analogWrite(enA, constrain (TARGET_SPEED + adjustPWM, 0, 255));
+  analogWrite(enB, constrain (TARGET_SPEED + adjustPWM, 0, 255));
 }
 
 void goBackward() {

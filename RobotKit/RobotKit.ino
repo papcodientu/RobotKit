@@ -1,11 +1,43 @@
-#include <IRremote.h>
-#include <Servo.h>
+/*
+RobotKit by PAP
+Robot tránh vật cản tự động hoắc có thể điều khiển bằng remote hồng ngoại
+A robot avoids objects using ultrasonic sensor or controls by IR remote 
 
-#define DEBUG
+Cách thức hoạt động:
+Operation:
+- Nút nguồn (Power Switch) để bật nguồn
+(Power switch to turn on/off power)
+- Nút chế độ (Mode Switch) để chuyển đổi chế độ hoạt động dùng cảm biến siêm âm hoặc chế độ điều khiển bằng tay
+(Mode switch to change mode, on - using IR remote, off - using ultrasonic sensor)
+
+Cách lắp mạch:
+Assembly:
+- Xem hình
+(See picture)
+
+Thư viện:
+Library:
+IRRemote: https://github.com/z3t0/Arduino-IRremote/archive/master.zip
+
+Tác giả: Nhân Nguyễn
+Ngày: 11/03/2015
+Lịch sử thay đổi
+- 19/03/2015 Rev 1.3 Changed schematic diagram
+- 11/03/2015 Rev. 1.0 First release
+Website: http://papcodientu.com/
+*/
+
+
+#include <IRremote.h>  // IR remote library
+#include <Servo.h>  // servo library
+
+//#define DEBUG  // uncomment this line to enable DEBUG to serial console
+//#define ENABLE_PID  // uncomment this line to enable PID
 
 #define MAX_DISTANCE 15
 
-#define TARGET_SPEED 200
+// PID configuration
+#define TARGET_SPEED 120
 #define FREQ_TIME 200
 #define Kp 0.7
 #define Ki 0
@@ -13,6 +45,7 @@
 #define TURN_LEFT_DELAY 200
 #define BACKWARD_DELAY 300
 
+// HEX code remote
 #define FORWARD 0xEC27D43D 
 #define BACKWARD 0x86BD99C
 #define LEFT 0xA23BD824
@@ -99,14 +132,15 @@ void setup() {
 }
 
 void loop() {
+  #ifdef ENABLE_PID
   checkPID();
+  #endif
   
-  if (digitalRead(modePin) == HIGH) {
+  if (digitalRead(modePin) == HIGH) {  // ultrasonic mode
     #ifdef DEBUG
     Serial.println("Auto run mode");
     #endif
-    // auto run mode
-    calculateDistance();
+    calculateDistance();  // calculate distance from a robot to object
     
     if ((int)distance <= MAX_DISTANCE) {
       #ifdef DEBUG
@@ -124,8 +158,7 @@ void loop() {
       #endif
       goStraight();
     }
-  } else {
-    // manual run mode
+  } else {// remote run mode
     #ifdef DEBUG
     //Serial.println("Manual run mode");
     #endif
@@ -231,10 +264,13 @@ void goStraight() {
   digitalWrite(inA, LOW);
   digitalWrite(inB, HIGH);
   analogWrite(enA, TARGET_SPEED);
-  //analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, LOW);
   digitalWrite(inD, HIGH);
+  #ifdef ENABLE_PID
   analogWrite(enB, constrain (TARGET_SPEED + adjustPWM, 0, 255));
+  #else
+  analogWrite(enB, TARGET_SPEED);
+  #endif
 }
 
 void goBackward() {
@@ -243,7 +279,11 @@ void goBackward() {
   analogWrite(enA, TARGET_SPEED);
   digitalWrite(inC, HIGH);
   digitalWrite(inD, LOW);
+  #ifdef ENABLE_PID
   analogWrite(enB, constrain (TARGET_SPEED + adjustPWM, 0, 255));
+  #else
+  analogWrite(enB, TARGET_SPEED);
+  #endif
 }
 
 void turnLeft() {
